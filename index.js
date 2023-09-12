@@ -16,6 +16,8 @@ const data = config.variables;
 
 for (const key in data) {
   const variable = data[key];
+  variable.value = variable.defaultValue;
+
   writeToFile(variable.value, `${variable.label}.txt`);
 }
 
@@ -41,6 +43,24 @@ client.on('message', (channel, tags, message, self) => {
 
   if (msg === '!hello') {
     client.say(channel, `@${tags.username}, heya!`);
+  }
+
+  if (msg.toLocaleLowerCase().indexOf('!reset') === 0) {
+    const matches = msg.match(/^!reset\s(.+)$/);
+
+    if (!matches) {
+      return;
+    }
+
+    let varName = matches[1];
+
+    if (data[varName] === undefined) {
+      return;
+    }
+
+    client.say(channel, `@${tags.username}, Reset ${data[varName].label} to default value: ${data[varName].defaultValue}`);
+    writeToFile(data[varName].value, `${varName}.txt`);
+    return;
   }
 
   if (msg.toLocaleLowerCase().indexOf('!') === 0) {

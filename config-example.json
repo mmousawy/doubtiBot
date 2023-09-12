@@ -8,15 +8,15 @@
   "variables": {
     "kills": {
       "label": "Kills",
-      "value": 0
+      "defaultValue": 0
     },
     "deaths": {
       "label": "Deaths",
-      "value": 0
+      "defaultValue": 0
     },
     "assists": {
       "label": "Assists",
-      "value": 0
+      "defaultValue": 0
     }
   }
 }

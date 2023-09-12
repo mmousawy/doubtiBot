@@ -21,7 +21,7 @@ for (const key in data) {
   const variable = data[key];
   variable.value = variable.defaultValue;
 
-  writeToFile(variable.value, `${variable.label}.txt`);
+  writeToFile(variable.value, `${key}.txt`);
 }
 
 http.createServer(function (request, response) {

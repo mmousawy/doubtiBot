@@ -74,6 +74,11 @@ client.on('message', (channel, tags, message, self) => {
     client.say(channel, `@${tags.username}, heya!`);
   }
 
+  if (tags.badges && (!tags.badges.broadcaster && !tags.mod)) {
+    // Only broadcaster and mods can use following commands
+    return;
+  }
+
   if (msg.toLocaleLowerCase().indexOf('!reset') === 0) {
     const matches = msg.match(/^!reset\s(.+)$/);
 
@@ -87,13 +92,15 @@ client.on('message', (channel, tags, message, self) => {
       return;
     }
 
+    data[varName].value = data[varName].defaultValue;
+
     client.say(channel, `@${tags.username}, Reset ${data[varName].label} to default value: ${data[varName].defaultValue}`);
     writeToFile(data[varName].defaultValue, `${varName}.txt`);
     return;
   }
 
   if (msg.toLocaleLowerCase().indexOf('!') === 0) {
-    const matches = msg.match(/^!([a-z]+)\s?(\+|\-)?\s?(\d+)?$/);
+    const matches = msg.match(/^!([a-z]+)\s?(\+|\-|add|sub)?\s?(\d+)?$/);
 
     if (!matches) {
       return;
@@ -108,6 +115,7 @@ client.on('message', (channel, tags, message, self) => {
 
     const operator = matches[2];
 
+    // Get
     if (!operator) {
       client.say(channel, `@${tags.username}, Current ${data[varName].label}: ${data[varName].value}`);
       return;
@@ -120,13 +128,15 @@ client.on('message', (channel, tags, message, self) => {
       newVal = parseInt(val);
     }
 
-    if (operator === '-') {
-      client.say(channel, `@${tags.username}, Reduced -${newVal} to ${data[varName].label}. Total ${data[varName].label}: ${data[varName].value - newVal}`);
+    // Subtract
+    if (operator === '-' || operator === 'sub') {
+      client.say(channel, `@${tags.username}, Subtracted -${newVal} to ${data[varName].label}. Total ${data[varName].label}: ${data[varName].value - newVal}`);
 
       data[varName].value -= newVal;
     }
 
-    if (operator === '+') {
+    // Add
+    if (operator === '+' || operator === 'add') {
       client.say(channel, `@${tags.username}, Added +${newVal} to ${data[varName].label}: Total ${data[varName].label}: ${data[varName].value + newVal}`);
       data[varName].value += newVal;
     }

@@ -35,7 +35,7 @@ function writeToFile(data, fileName) {
 
 client.connect().catch(console.error);
 client.on('message', (channel, tags, message, self) => {
-  const msg = message.replaceAll('󠀀', '').trim().toLowerCase();
+  const msg = message.replace(/󠀀/g, '').trim().toLowerCase();
 
   if (self) return;
 

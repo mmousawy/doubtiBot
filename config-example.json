@@ -1,0 +1,22 @@
+{
+  "options": { "debug": true },
+  "identity": {
+    "username": "botaccountname",
+    "password": "oauth:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  "channels": [ "yourchannelname" ],
+  "variables": {
+    "kills": {
+      "label": "Kills",
+      "value": 0
+    },
+    "deaths": {
+      "label": "Deaths",
+      "value": 0
+    },
+    "assists": {
+      "label": "Assists",
+      "value": 0
+    }
+  }
+}

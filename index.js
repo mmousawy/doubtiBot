@@ -88,7 +88,7 @@ client.on('message', (channel, tags, message, self) => {
     }
 
     client.say(channel, `@${tags.username}, Reset ${data[varName].label} to default value: ${data[varName].defaultValue}`);
-    writeToFile(data[varName].value, `${varName}.txt`);
+    writeToFile(data[varName].defaultValue, `${varName}.txt`);
     return;
   }
 

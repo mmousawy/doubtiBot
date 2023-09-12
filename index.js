@@ -1,5 +1,8 @@
 const tmi = require('tmi.js');
 const fs = require('fs');
+const path = require('path');
+const http = require('http');
+const url = require('url');
 
 const config = require('./config.json');
 
@@ -20,6 +23,32 @@ for (const key in data) {
 
   writeToFile(variable.value, `${variable.label}.txt`);
 }
+
+http.createServer(function (request, response) {
+  try {
+    const requestUrl = url.parse(request.url);
+
+    const requestUrlRelative = path.join(process.cwd(), '/data/', path.normalize(requestUrl.pathname));
+
+    var fileStream = fs.createReadStream(requestUrlRelative);
+
+    fileStream.pipe(response);
+    fileStream.on('open', function() {
+      response.writeHead(200);
+    });
+
+    fileStream.on('error', function(e) {
+      response.writeHead(404);
+      response.end();
+    });
+  } catch(e) {
+    response.writeHead(500);
+    response.end();
+    console.log(e.stack);
+  }
+}).listen(config.http.port, config.http.host, () => {
+  console.log(`Server is running on http://${config.http.host}:${config.http.port}`);
+});
 
 function writeToFile(data, fileName) {
   if (typeof data !== 'string') {

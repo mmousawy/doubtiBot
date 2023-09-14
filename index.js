@@ -32,9 +32,9 @@ const DATA = {
 // Reset data files to default values
 for (const key in OUTPUT) {
   const variable = OUTPUT[key];
-  variable.value = variable.defaultValue;
+  const foundValue = fs.readFileSync(`./data/${key}.txt`);
 
-  writeToFile(variable.value, `${key}.txt`);
+  variable.value = parseInt(foundValue);
 }
 
 // Watch the attributes file for changes
@@ -180,10 +180,8 @@ function updateData() {
       player.countForData = false;
 
       // Aggregate amounts
-      matchData.kills += parseInt(player.downedbyme);
-      matchData.kills += parseInt(player.killedbyme);
-      matchData.deaths += parseInt(player.downedme);
-      matchData.deaths += parseInt(player.killedme);
+      matchData.kills += parseInt(player.downedbyme) + parseInt(player.killedbyme);
+      matchData.deaths += parseInt(player.downedme) + parseInt(player.killedme);
     }
 
     // Aggregate amounts
@@ -201,10 +199,7 @@ function updateData() {
       console.log('>>> Match ended!');
 
       client.channels.forEach((channel) => {
-        client.say(channel, `/me Match ended! Results:
-        ${matchData.kills} Kill${ matchData.kills === 1 ? '' : 's' } /
-        ${matchData.deaths} Death${ matchData.deaths === 1 ? '' : 's' } /
-        ${matchData.assists} Assist${ matchData.assists === 1 ? '' : 's' }`);
+        client.say(channel, `/me Match ended! Results: ${ matchData.kills } Kill${ matchData.kills === 1 ? '' : 's' } / ${ matchData.deaths } Death${ matchData.deaths === 1 ? '' : 's' } / ${ matchData.assists } Assist${ matchData.assists === 1 ? '' : 's' }`);
       });
     }
 
@@ -268,7 +263,9 @@ function announceBotConnected() {
     }
 
     client.channels.forEach((channel) => {
-      // client.say(channel, `/me Hunt: Showdown data tracker is online! [${new Date().toLocaleTimeString()}]`);
+      client.say(channel, `/me [${new Date().toLocaleTimeString()}] I am ready to track your games! Type !kills, !deaths, !assists to view the stats. 🤖`);
+      client.say(channel, `/me Current stats: ${ OUTPUT.kills.value } Kill${ OUTPUT.kills.value === 1 ? '' : 's' } / ${ OUTPUT.deaths.value } Death${ OUTPUT.deaths.value === 1 ? '' : 's' } / ${ OUTPUT.assists.value } Assist${ OUTPUT.assists.value === 1 ? '' : 's' }
+      `);
     });
   }, 100);
 }
@@ -278,8 +275,8 @@ client.on('message', (channel, tags, message, self) => {
 
   if (self) return;
 
-  if (msg === '!hello') {
-    client.say(channel, `@${tags.username}, heya!`);
+  if (msg === '!hey') {
+    client.say(channel, `Heya @${tags.username}!`);
   }
 
   if (tags.badges && (!tags.badges.broadcaster && !tags.mod)) {
@@ -308,7 +305,7 @@ client.on('message', (channel, tags, message, self) => {
   }
 
   if (msg.toLocaleLowerCase().indexOf('!') === 0) {
-    const matches = msg.match(/^!([a-z]+)\s?(\+|\-|add|sub)?\s?(\d+)?$/);
+    const matches = msg.match(/^!([a-z]+)\s+?(\+|\-|add|sub)?\s+?(\d+)?$/);
 
     if (!matches) {
       return;
@@ -316,8 +313,9 @@ client.on('message', (channel, tags, message, self) => {
 
     let varName = matches[1];
 
+    // Does the variable exist?
     if (OUTPUT[varName] === undefined) {
-      console.log(matches);
+      // If not, cancel
       return;
     }
 
@@ -338,14 +336,14 @@ client.on('message', (channel, tags, message, self) => {
 
     // Subtract
     if (operator === '-' || operator === 'sub') {
-      client.say(channel, `@${tags.username}, Subtracted -${newVal} to ${OUTPUT[varName].label}. Total ${OUTPUT[varName].label}: ${OUTPUT[varName].value - newVal}`);
+      client.say(channel, `@${tags.username}, Subtracted ${newVal} from ${OUTPUT[varName].label}. Total ${OUTPUT[varName].label}: ${OUTPUT[varName].value - newVal}`);
 
       OUTPUT[varName].value -= newVal;
     }
 
     // Add
     if (operator === '+' || operator === 'add') {
-      client.say(channel, `@${tags.username}, Added +${newVal} to ${OUTPUT[varName].label}: Total ${OUTPUT[varName].label}: ${OUTPUT[varName].value + newVal}`);
+      client.say(channel, `@${tags.username}, Added ${newVal} to ${OUTPUT[varName].label}. Total ${OUTPUT[varName].label}: ${OUTPUT[varName].value + newVal}`);
       OUTPUT[varName].value += newVal;
     }
 

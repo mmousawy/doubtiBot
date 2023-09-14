@@ -8,6 +8,8 @@ const parseString = require('xml2js').parseString;
 
 const config = require('./config.json');
 
+let firstRun = true;
+
 // Set the TMI client for Twitch
 const client = new tmi.Client({
   options: config.options,
@@ -19,14 +21,17 @@ const client = new tmi.Client({
 });
 
 // Data variables
-const GLOBALDATA = config.variables;
+const OUTPUT = config.variables;
 
 // Keeps track of all players and is used for tracking changes
-const players = {};
+const DATA = {
+  players: {},
+  entries: {},
+};
 
 // Reset data files to default values
-for (const key in GLOBALDATA) {
-  const variable = GLOBALDATA[key];
+for (const key in OUTPUT) {
+  const variable = OUTPUT[key];
   variable.value = variable.defaultValue;
 
   writeToFile(variable.value, `${key}.txt`);
@@ -34,117 +39,182 @@ for (const key in GLOBALDATA) {
 
 // Watch the attributes file for changes
 fs.watchFile(config.hunt.attributesPath, (curr, prev) => {
-  console.log(`${config.hunt.attributesPath} file Changed`, Date.now());
+  console.log(`# File changed`, new Date().toLocaleTimeString());
   updateData();
 });
 
 updateData();
 
+function saveMissionBagEntry(xmlItem, entries) {
+  const nameRegex = /MissionBagEntry_(\d+)_(.+)/;
+  const matches = xmlItem.name.match(nameRegex);
+
+  if (!matches) {
+    return;
+  }
+
+  const itemId = matches[1];
+  const itemName = matches[2];
+
+  // All items
+  entries[itemId][itemName] = xmlItem.value;
+}
+
+function saveMissionBagPlayer(xmlItem, playerId, playerName) {
+  const nameRegex = /MissionBagPlayer_(\d+_\d+)_(.+)/;
+  const matches = xmlItem.name.match(nameRegex);
+
+  if (!matches) {
+    return;
+  }
+
+  const itemId = matches[1];
+  const itemName = matches[2];
+
+  // All items
+  DATA.players[itemId][itemName] = xmlItem.value;
+}
+
 function updateData() {
   const xmlData = fs.readFileSync(config.hunt.attributesPath, 'utf8');
+  const newEntries = {};
 
   parseString(xmlData, function (err, result) {
     let playerId = 0;
     let playerName = '';
-    let playerCount = 0;
+    let entryId = 0;
 
     result.Attributes.Attr.forEach((attr) => {
       const item = attr.$;
 
-      // Stop if not a player
-      if (item.name.indexOf('MissionBagPlayer') !== 0) {
-        return;
-      }
+      // Entries
+      if (item.name.indexOf('MissionBagEntry') === 0) {
+        const idRegex = /^MissionBagEntry_(\d+)$/;
+        const matches = item.name.match(idRegex);
 
-      // Create a new entry in the players object
-      if (item.name.indexOf('_blood_line_name') !== -1) {
-        const idRegex = /MissionBagPlayer_(\d+_\d+)_blood_line_name/;
-        playerId = item.name.match(idRegex)[1];
+        if (matches) {
+          entryId = matches[1];
 
-        playerName = item.value;
-
-        if (players[playerId] === undefined) {
-          players[playerId] = {
-            downedByMe: 0,
-            killedByMe: 0,
-            killedMe: 0,
-            downedMe: 0,
-            countForData: false,
-            playerName: playerName,
-            id: playerId,
-          };
-        } else if (players[playerId].playerName !== playerName) {
-          // Reset values
-          players[playerId] = {
-            downedByMe: 0,
-            killedByMe: 0,
-            killedMe: 0,
-            downedMe: 0,
-            countForData: false,
-            playerName: playerName,
-            id: playerId,
-          };
+          if (newEntries[entryId] === undefined) {
+            newEntries[entryId] = {
+              id: entryId,
+            };
+          }
         }
 
-        playerCount++;
-
-        console.log(playerId, playerName, playerCount);
+        saveMissionBagEntry(item, newEntries);
       }
 
-      // Downed by me
-      if (item.name.indexOf('_downedbyme') !== -1) {
-        players[playerId].downedByMe = parseInt(item.value);
-      }
+      // Players
+      if (item.name.indexOf('MissionBagPlayer') === 0) {
+        // Create a new entry in the players object
+        if (item.name.indexOf('_blood_line_name') !== -1) {
+          const idRegex = /MissionBagPlayer_(\d+_\d+)_blood_line_name/;
+          playerId = item.name.match(idRegex)[1];
+          playerName = item.value;
 
-      // Killed by me
-      if (item.name.indexOf('_killedbyme') !== -1) {
-        players[playerId].killedByMe = parseInt(item.value);
-      }
+          if (DATA.players[playerId] === undefined) {
+            DATA.players[playerId] = {
+              name: playerName,
+              id: playerId,
+            };
+          } else if (DATA.players[playerId].name !== playerName) {
+            // Reset values
+            DATA.players[playerId] = {
+              name: playerName,
+              id: playerId,
+              countForData: true,
+            };
+          }
+        }
 
-      // Downed me
-      if (item.name.indexOf('_downedme') !== -1) {
-        players[playerId].downedMe = parseInt(item.value);
-      }
-
-      // Killed me
-      if (item.name.indexOf('_killedme') !== -1) {
-        players[playerId].killedMe = parseInt(item.value);
+        saveMissionBagPlayer(item, playerId, playerName);
       }
     });
 
     // Log all data
     console.log('>>> Counting data!');
 
-    for (const key in players) {
-      const player = players[key];
+    let matchEnded = false;
+
+    const matchData = {
+      kills: 0,
+      deaths: 0,
+      assists: 0,
+    };
+
+    if (firstRun) {
+      DATA.entries = newEntries;
+
+    } else {
+      for (const entryId in newEntries) {
+        const entry = newEntries[entryId];
+
+        if (DATA.entries[entryId].category !== entry.category) {
+          // New entry
+
+          // Count assists
+          if (entry.category === 'accolade_players_killed_assist') {
+            console.log('> Counting assists:', entry);
+            matchData.assists += parseInt(entry.amount);
+          }
+
+          DATA.entries[entryId] = entry;
+        }
+      }
+    }
+
+    for (const playerId in DATA.players) {
+      const player = DATA.players[playerId];
 
       if (!player.countForData) {
         continue;
+      } else {
+        // Set matchEnded flag to signal that the match has ended
+        matchEnded = true;
       }
 
-      console.log(player.id, player.name);
+      console.log('> Counting data for player:', player.id, player.name);
 
       // Set the count flag to false
       player.countForData = false;
 
-      // Downed by me
-      GLOBALDATA.kills.value += player.downedByMe;
-      GLOBALDATA.kills.value += player.killedByMe;
-      GLOBALDATA.deaths.value += player.downedMe;
-      GLOBALDATA.deaths.value += player.killedMe;
+      // Aggregate amounts
+      matchData.kills += parseInt(player.downedbyme);
+      matchData.kills += parseInt(player.killedbyme);
+      matchData.deaths += parseInt(player.downedme);
+      matchData.deaths += parseInt(player.killedme);
     }
 
-    for (const key in GLOBALDATA) {
-      const variable = GLOBALDATA[key];
+    // Aggregate amounts
+    OUTPUT.kills.value += matchData.kills;
+    OUTPUT.deaths.value += matchData.deaths;
+    OUTPUT.assists.value += matchData.assists;
+
+    for (const key in OUTPUT) {
+      const variable = OUTPUT[key];
 
       writeToFile(variable.value, `${key}.txt`);
     }
 
+    if (matchEnded) {
+      console.log('>>> Match ended!');
+
+      client.channels.forEach((channel) => {
+        client.say(channel, `/me Match ended! Results:
+        ${matchData.kills} Kill${ matchData.kills === 1 ? '' : 's' } /
+        ${matchData.deaths} Death${ matchData.deaths === 1 ? '' : 's' } /
+        ${matchData.assists} Assist${ matchData.assists === 1 ? '' : 's' }`);
+      });
+    }
+
     // Write to file
-    fs.writeFile(`./data/players.json`, JSON.stringify(players), function (err) {
+    fs.writeFile(`./data/data.json`, JSON.stringify(DATA, null, 2), function (err) {
       if (err) return console.log(err);
     });
   });
+
+  firstRun = false;
 }
 
 http.createServer(function (request, response) {
@@ -188,6 +258,21 @@ function writeToFile(data, fileName) {
 }
 
 client.connect().catch(console.error);
+announceBotConnected();
+
+function announceBotConnected() {
+  setTimeout(() => {
+    if (!client.channels.length) {
+      announceBotConnected();
+      return;
+    }
+
+    client.channels.forEach((channel) => {
+      // client.say(channel, `/me Hunt: Showdown data tracker is online! [${new Date().toLocaleTimeString()}]`);
+    });
+  }, 100);
+}
+
 client.on('message', (channel, tags, message, self) => {
   const msg = message.replace(/󠀀/g, '').trim().toLowerCase();
 
@@ -211,14 +296,14 @@ client.on('message', (channel, tags, message, self) => {
 
     let varName = matches[1];
 
-    if (GLOBALDATA[varName] === undefined) {
+    if (OUTPUT[varName] === undefined) {
       return;
     }
 
-    GLOBALDATA[varName].value = GLOBALDATA[varName].defaultValue;
+    OUTPUT[varName].value = OUTPUT[varName].defaultValue;
 
-    client.say(channel, `@${tags.username}, Reset ${GLOBALDATA[varName].label} to default value: ${GLOBALDATA[varName].defaultValue}`);
-    writeToFile(GLOBALDATA[varName].defaultValue, `${varName}.txt`);
+    client.say(channel, `@${tags.username}, Reset ${OUTPUT[varName].label} to default value: ${OUTPUT[varName].defaultValue}`);
+    writeToFile(OUTPUT[varName].defaultValue, `${varName}.txt`);
     return;
   }
 
@@ -231,7 +316,7 @@ client.on('message', (channel, tags, message, self) => {
 
     let varName = matches[1];
 
-    if (data[varName] === undefined) {
+    if (OUTPUT[varName] === undefined) {
       console.log(matches);
       return;
     }
@@ -240,7 +325,7 @@ client.on('message', (channel, tags, message, self) => {
 
     // Get
     if (!operator) {
-      client.say(channel, `@${tags.username}, Current ${data[varName].label}: ${data[varName].value}`);
+      client.say(channel, `@${tags.username}, Current ${OUTPUT[varName].label}: ${OUTPUT[varName].value}`);
       return;
     }
 
@@ -253,17 +338,17 @@ client.on('message', (channel, tags, message, self) => {
 
     // Subtract
     if (operator === '-' || operator === 'sub') {
-      client.say(channel, `@${tags.username}, Subtracted -${newVal} to ${data[varName].label}. Total ${data[varName].label}: ${data[varName].value - newVal}`);
+      client.say(channel, `@${tags.username}, Subtracted -${newVal} to ${OUTPUT[varName].label}. Total ${OUTPUT[varName].label}: ${OUTPUT[varName].value - newVal}`);
 
-      data[varName].value -= newVal;
+      OUTPUT[varName].value -= newVal;
     }
 
     // Add
     if (operator === '+' || operator === 'add') {
-      client.say(channel, `@${tags.username}, Added +${newVal} to ${data[varName].label}: Total ${data[varName].label}: ${data[varName].value + newVal}`);
-      data[varName].value += newVal;
+      client.say(channel, `@${tags.username}, Added +${newVal} to ${OUTPUT[varName].label}: Total ${OUTPUT[varName].label}: ${OUTPUT[varName].value + newVal}`);
+      OUTPUT[varName].value += newVal;
     }
 
-    writeToFile(data[varName].value, `${varName}.txt`);
+    writeToFile(OUTPUT[varName].value, `${varName}.txt`);
   }
 });
